@@ -2,6 +2,8 @@
 
 This project is a locally deployed tool for remote PC screenshot control and AI-powered content analysis using Google Gemini. It features a web service, real-time WebSocket communication, and a desktop AI answer overlay window.
 
+![Gif](./Animation.gif)
+
 ---
 
 ## Directory Structure
