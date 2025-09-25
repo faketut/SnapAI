@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snap.AI Mobile Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        button:active {
+            background-color: #0056b3;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Snap.AI Mobile Control</h1>
+        <button id="captureBtn">Capture Screenshot</button>
+        <div style="margin-bottom: 10px;">
+            <input type="text" id="promptInput" placeholder="Type your prompt here..." style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 10px;">
+            <button id="queryBtn">Send Prompt</button>
+        </div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const ws = new WebSocket('ws://' + window.location.hostname + ':8765');
+        const statusDiv = document.getElementById('status');
+        
+        ws.onopen = () => {
+            showStatus('Connected to server', 'success');
+        };
+        
+        ws.onclose = () => {
+            showStatus('Disconnected from server', 'error');
+        };
+        
+        ws.onerror = (error) => {
+            showStatus('WebSocket error: ' + error.message, 'error');
+        };
+        
+        let lastScreenshotBase64 = null;
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'error') {
+                showStatus(data.message, 'error');
+            } else if (data.type === 'screenshot' && data.data) {
+                lastScreenshotBase64 = data.data;
+                showStatus('Screenshot captured', 'success');
+            } else {
+                showStatus('Action completed successfully', 'success');
+            }
+        };
+        
+        document.getElementById('captureBtn').onclick = () => {
+            ws.send(JSON.stringify({command: 'screenshot'}));
+        };
+        
+        document.getElementById('queryBtn').onclick = () => {
+            const prompt = document.getElementById('promptInput').value.trim();
+            if (lastScreenshotBase64) {
+                ws.send(JSON.stringify({
+                    command: 'ai_query',
+                    question: prompt || 'use code to solve:',
+                    image_data: lastScreenshotBase64
+                }));
+                showStatus('Sent image + prompt', 'success');
+            } else if (prompt) {
+                ws.send(JSON.stringify({
+                    command: 'ai_query_text',
+                    question: prompt
+                }));
+                showStatus('Sent prompt', 'success');
+            } else {
+                showStatus('Please capture a screenshot or enter a prompt', 'error');
+                return;
+            }
+            document.getElementById('promptInput').value = '';
+        };
+        
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = type;
+        }
+    </script>
+</body>
+</html>

@@ -1,32 +1,215 @@
 import asyncio
-import websockets
-import json
 import base64
-import io
+import json
+import logging
+import os
+import threading
+from datetime import datetime
+from io import BytesIO
+from typing import Set, Dict, Any, Optional
+
 from PIL import ImageGrab
 import google.generativeai as genai
+import websockets
 from flask import Flask, render_template, send_from_directory
-import threading
-import time
-import os
-from datetime import datetime
-import logging
 from dotenv import load_dotenv
 
+# Defaults and configuration constants
+DEFAULT_HOST = '0.0.0.0'
+DEFAULT_HTTP_PORT = 8080
+DEFAULT_WS_PORT = 8765
+WS_PING_INTERVAL_SEC = 20
+WS_PING_TIMEOUT_SEC = 30
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-load_dotenv() 
+# Load environment variables
+load_dotenv()
 
-class RemoteControlServer:
+class AIService:
+    """Handles AI-related operations"""
+    
     def __init__(self):
-        self.app = Flask(__name__)
-        self.clients = set()
-        self.gemini_api_key = os.environ.get('GEMINI_API_KEY')
-        self.setup_routes()
+        self.api_key = os.getenv('GEMINI_API_KEY')
+        if not self.api_key:
+            logger.warning("No GEMINI_API_KEY found in environment")
+        else:
+            genai.configure(api_key=self.api_key)
+    
+    async def analyze_screenshot(self, image_data: str, question: str) -> str:
+        """Analyze screenshot using Gemini API"""
+        try:
+            if not self.api_key:
+                return "Error: Gemini API key not configured"
+            
+            # Decode base64 image
+            img_bytes = base64.b64decode(image_data)
+            
+            # Create Gemini model and query
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            prompt = f"Please analyze this screenshot and answer: {question}"
+            
+            response = model.generate_content([
+                prompt,
+                {"mime_type": "image/png", "data": img_bytes}
+            ])
+            return response.text
+            
+        except Exception as e:
+            logger.error(f"AI analysis failed: {e}")
+            return f"Analysis failed: {str(e)}"
+
+    async def analyze_text(self, question: str) -> str:
+        """Analyze text using Gemini API (text-only)"""
+        try:
+            if not self.api_key:
+                return "Error: Gemini API key not configured"
+
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(question)
+            return response.text
+        except Exception as e:
+            logger.error(f"Text analysis failed: {e}")
+            return f"Analysis failed: {str(e)}"
+
+class ScreenshotService:
+    """Handles screenshot operations"""
+    
+    @staticmethod
+    def capture() -> Optional[str]:
+        """Capture screen and return base64 encoded PNG"""
+        try:
+            screenshot = ImageGrab.grab()
+            with BytesIO() as buffer:
+                screenshot.save(buffer, format='PNG')
+                return base64.b64encode(buffer.getvalue()).decode('utf-8')
+        except Exception as e:
+            logger.error(f"Screenshot failed: {e}")
+            return None
+
+class WebSocketHandler:
+    """Handles WebSocket connections and messages"""
+    
+    def __init__(self):
+        self.clients: Set[websockets.WebSocketServerProtocol] = set()
+        self.ai_service = AIService()
         
-    def setup_routes(self):
+    async def handle_client(self, websocket: websockets.WebSocketServerProtocol) -> None:
+        """Handle individual WebSocket client"""
+        self.clients.add(websocket)
+        client_id = id(websocket)
+        logger.info(f"Client {client_id} connected")
+        
+        try:
+            async for message in websocket:
+                await self._process_message(websocket, message)
+        except websockets.ConnectionClosed:
+            logger.info(f"Client {client_id} disconnected")
+        except Exception as e:
+            logger.error(f"Error handling client {client_id}: {e}")
+        finally:
+            self.clients.remove(websocket)
+    
+    async def _process_message(self, websocket: websockets.WebSocketServerProtocol, 
+                             message: str) -> None:
+        """Process incoming WebSocket messages"""
+        try:
+            data = json.loads(message)
+            command = data.get('command')
+            
+            if command == 'screenshot':
+                await self._handle_screenshot(websocket)
+            elif command == 'ai_query':
+                await self._handle_ai_query(websocket, data)
+            elif command == 'ai_query_text':
+                await self._handle_ai_query_text(websocket, data)
+            elif command == 'ping':
+                await websocket.send(json.dumps({
+                    'type': 'pong',
+                    'timestamp': datetime.now().isoformat()
+                }))
+                
+        except json.JSONDecodeError:
+            await self._send_error(websocket, "Invalid JSON format")
+        except Exception as e:
+            await self._send_error(websocket, f"Error processing message: {str(e)}")
+    
+    async def _handle_screenshot(self, websocket: websockets.WebSocketServerProtocol) -> None:
+        """Handle screenshot capture request"""
+        img_data = ScreenshotService.capture()
+        if img_data:
+            await websocket.send(json.dumps({
+                'type': 'screenshot',
+                'data': img_data,
+                'timestamp': datetime.now().isoformat()
+            }))
+        else:
+            await self._send_error(websocket, "Screenshot failed")
+    
+    async def _handle_ai_query(self, websocket: websockets.WebSocketServerProtocol, 
+                             data: Dict[str, Any]) -> None:
+        """Handle AI query request"""
+        question = data.get('question', '')
+        img_data = data.get('image_data')
+
+        if img_data:
+            answer = await self.ai_service.analyze_screenshot(img_data, question)
+            await websocket.send(json.dumps({
+                'type': 'ai_response',
+                'answer': answer,
+                'timestamp': datetime.now().isoformat()
+            }))
+        else:
+            await self._send_error(websocket, "No image provided")
+
+    async def _handle_ai_query_text(self, websocket: websockets.WebSocketServerProtocol, 
+                                 data: Dict[str, Any]) -> None:
+        """Handle text-only AI query request"""
+        question = data.get('question', '')
+        answer = await self.ai_service.analyze_text(question)
+        await websocket.send(json.dumps({
+            'type': 'ai_response',
+            'answer': answer,
+            'timestamp': datetime.now().isoformat()
+        }))
+    
+    @staticmethod
+    async def _send_error(websocket: websockets.WebSocketServerProtocol, 
+                         message: str) -> None:
+        """Send error message to client"""
+        await websocket.send(json.dumps({
+            'type': 'error',
+            'message': message,
+            'timestamp': datetime.now().isoformat()
+        }))
+
+    #
+
+class Server:
+    """Main server class combining Flask and WebSocket servers"""
+    
+    def __init__(self, host: str = DEFAULT_HOST, 
+                 http_port: int = DEFAULT_HTTP_PORT, 
+                 ws_port: int = DEFAULT_WS_PORT):
+        self.host = host
+        self.http_port = http_port
+        self.ws_port = ws_port
+        
+        # Initialize Flask app
+        self.app = Flask(__name__,
+                        template_folder='templates',
+                        static_folder='static')
+        self._setup_routes()
+        
+        # Initialize WebSocket handler
+        self.ws_handler = WebSocketHandler()
+    
+    def _setup_routes(self) -> None:
         """Setup Flask routes"""
         @self.app.route('/')
         def index():
@@ -35,152 +218,37 @@ class RemoteControlServer:
         @self.app.route('/static/<path:filename>')
         def static_files(filename):
             return send_from_directory('static', filename)
-
-    def capture_screen(self):
-        """Capture screen"""
-        try:
-            screenshot = ImageGrab.grab()
-            buffer = io.BytesIO()
-            screenshot.save(buffer, format='PNG')
-            img_data = buffer.getvalue()
-            return base64.b64encode(img_data).decode('utf-8')
-        except Exception as e:
-            logger.error(f"Screenshot failed: {e}")
-            return None
-
-    async def query_llm(self, image_data, question):
-        """Query Gemini API"""
-        try:
-            if not self.gemini_api_key:
-                return "Error: Please configure a valid Gemini API key in .env"
-            
-            genai.configure(api_key=self.gemini_api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            
-            # Decode image data
-            img_bytes = base64.b64decode(image_data)
-            img = io.BytesIO(img_bytes)
-            
-            # Build prompt
-            prompt = f"Please analyze this screenshot and answer the following question: {question}"
-            
-            response = model.generate_content([prompt, {"mime_type": "image/png", "data": img_bytes}])
-            return response.text
-        except Exception as e:
-            logger.error(f"Gemini query failed: {e}")
-            return f"Query failed: {str(e)}"
-
-    async def handle_websocket(self, websocket, path):
-        """Handle WebSocket connections"""
-        self.clients.add(websocket)
-        logger.info(f"New client connected: {websocket.remote_address}")
-        
-        try:
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    command = data.get('command')
-                    
-                    if command == 'screenshot':
-                        # Execute screenshot
-                        img_data = self.capture_screen()
-                        if img_data:
-                            await websocket.send(json.dumps({
-                                'type': 'screenshot',
-                                'data': img_data,
-                                'timestamp': datetime.now().isoformat()
-                            }))
-                        else:
-                            await websocket.send(json.dumps({
-                                'type': 'error',
-                                'message': 'Screenshot failed'
-                            }))
-                    
-                    elif command == 'ai_query':
-                        # AI query
-                        question = data.get('question', '')
-                        image_data = data.get('image_data', '')
-
-                        image_data = self.capture_screen()
-                        
-                        answer = await self.query_llm(image_data, question)
-                        await websocket.send(json.dumps({
-                            'type': 'ai_response',
-                            'question': question,
-                            'answer': answer,
-                            'timestamp': datetime.now().isoformat()
-                        }))
-                    
-                    elif command == 'ping':
-                        await websocket.send(json.dumps({
-                            'type': 'pong',
-                            'timestamp': datetime.now().isoformat()
-                        }))
-                        
-                except json.JSONDecodeError:
-                    await websocket.send(json.dumps({
-                        'type': 'error',
-                        'message': 'Invalid JSON format'
-                    }))
-                except Exception as e:
-                    logger.error(f"Failed to process message: {e}")
-                    await websocket.send(json.dumps({
-                        'type': 'error',
-                        'message': f'Processing failed: {str(e)}'
-                    }))
-                    
-        except websockets.exceptions.ConnectionClosed:
-            logger.info("Client connection closed")
-        except Exception as e:
-            logger.error(f"WebSocket handling exception: {e}")
-        finally:
-            self.clients.discard(websocket)
-
-    def run_websocket_server(self):
+    
+    async def run_websocket_server(self) -> None:
         """Run WebSocket server"""
-        try:
-            # Create new event loop for current thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            # Create WebSocket server
-            start_server = websockets.serve(self.handle_websocket, "0.0.0.0", 8765)
-            
-            # Start server
-            loop.run_until_complete(start_server)
-            logger.info("WebSocket server started on port 8765")
-            
-            # Run event loop
-            loop.run_forever()
-        except Exception as e:
-            logger.error(f"WebSocket server startup failed: {e}")
-        finally:
-            try:
-                loop.close()
-            except:
-                pass
-
-    def run_flask_app(self):
-        """Run Flask application"""
-        logger.info("Flask server started on port 8080")
-        self.app.run(host='0.0.0.0', port=8080, debug=False)
-
-    def start(self):
-        """Start server"""
-        # Create necessary directories
+        async with websockets.serve(
+            self.ws_handler.handle_client,
+            self.host,
+            self.ws_port,
+            ping_interval=WS_PING_INTERVAL_SEC,
+            ping_timeout=WS_PING_TIMEOUT_SEC
+        ) as server:
+            logger.info(f"WebSocket server running on ws://{self.host}:{self.ws_port}")
+            await server.wait_closed()
+    
+    def run(self) -> None:
+        """Run both Flask and WebSocket servers"""
+        # Ensure directories exist
         os.makedirs('templates', exist_ok=True)
         os.makedirs('static', exist_ok=True)
-        
-        # Start WebSocket server thread
-        websocket_thread = threading.Thread(target=self.run_websocket_server, daemon=True)
+
+        # Start WebSocket server in a separate thread
+        loop = asyncio.new_event_loop()
+        websocket_thread = threading.Thread(
+            target=lambda: loop.run_until_complete(self.run_websocket_server()),
+            daemon=True
+        )
         websocket_thread.start()
         
-        # Start Flask application
-        try:
-            self.run_flask_app()
-        except KeyboardInterrupt:
-            logger.info("Server stopped")
+        # Start Flask server
+        logger.info(f"HTTP server running on http://{self.host}:{self.http_port}")
+        self.app.run(host=self.host, port=self.http_port, debug=False)
 
 if __name__ == "__main__":
-    server = RemoteControlServer()
-    server.start()
+    server = Server()
+    server.run()
