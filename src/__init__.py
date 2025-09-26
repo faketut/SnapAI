@@ -1,0 +1,1 @@
+# SnapAI - Modular AI Assistant

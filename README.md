@@ -1,130 +1,182 @@
 # SnapAI
 
-This project is a locally deployed tool for remote PC screenshot control and AI-powered content analysis using Google Gemini. It features a web service, real-time WebSocket communication, and a desktop AI answer overlay window.
+A locally deployed AI assistant with dual-client architecture for seamless LLM interaction. Features desktop overlay control via hotkeys and mobile browser synchronization, powered by Google Gemini with robust WebSocket communication.
 
 ![Gif](./Animation.gif)
 
----
+## Quick Start
 
-## Directory Structure
-
-```
-remote-screenshot-system/
-├── server/
-│   ├── server.py      # Main backend service (Flask + WebSocket + AI analysis)
-│   ├── overlay.py     # Desktop AI answer overlay (PyQt5)
-│   ├── main.py        # One-click launcher for server.py and overlay.py
-│   ├── requirements.txt
-│   ├── ...
-├── static/           # Static resources
-├── templates/        # Web templates
-└── README.md         # Documentation
-```
-
----
-
-## Key Features
-
-- 🖥️ **Remote Screenshot**: Take PC screenshots from your mobile browser
-- 🤖 **AI Analysis**: Integrate Google Gemini for intelligent screenshot analysis
-- 📱 **Mobile Optimized**: Responsive web UI for mobile control
-- ⚡ **Real-time Communication**: WebSocket for low-latency bidirectional messaging
-- 🪟 **Desktop AI Overlay**: PyQt5-based floating window for AI answers, with global hotkeys and scroll support
-
----
-
-## Installation & Setup
-
-### 1. Install Dependencies
-
-It is recommended to use Anaconda/Miniconda, or ensure Python 3.8+ is installed.
-
+### 1. Setup Environment
 ```sh
-cd server
+# Create conda environment
+conda create -n snap.ai python=3.8+
+conda activate snap.ai
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Configure Gemini API Key
+### 2. Configure API Key
+Create `.env` file:
+```
+GEMINI_API_KEY=your_gemini_api_key_here
+```
 
-- Recommended: Create a `.env` file in the `server/` directory with:
-  ```
-  GEMINI_API_KEY=your_api_key_here
-  ```
-- Only `.env` is supported (no config.json)
+### 3. Launch System
 
-### 3. Start the System
-
-One-click launch (recommended):
+**Production Mode:**
 ```sh
-cd server
+# One-click launch
 python main.py
+
+# Or use Windows batch script
+snap.ai.bat
 ```
 
-Or start components separately:
+**Development Mode (with Hot Reload):**
 ```sh
-python server.py   # Start backend service (Web + WebSocket)
-python overlay.py  # Start desktop AI overlay
+# Development server with hot reload
+python dev_server.py --debug
+
+# Or use Windows batch script
+dev.bat
 ```
 
----
+## Features
 
-## Component Overview
-
-### server.py
-- Flask web server (default port 8080) for mobile interface
-- WebSocket server (port 8765) for screenshot and AI query commands
-- Google Gemini API for screenshot content analysis
-- Reads API key from `.env` only
-- Detailed logging
-
-### overlay.py
-- PyQt5 desktop floating window for AI answers
-- Global hotkeys:
-  - F8: Send AI query
-  - F9/F10: Scroll content up/down
-  - F11: Show window
-  - F12: Hide window
-- WebSocket client for real-time AI answers
-- Supports drag and scroll
-
-### main.py
-- One-click launcher for both server.py and overlay.py
-- Process management, Ctrl+C to terminate all
-
----
+- 🎯 **Hotkey-Controlled AI**: Instant queries via F7/F8 hotkeys
+- 🔄 **Dual-Client Sync**: AI responses display simultaneously in overlay and mobile browser
+- ⚡ **Robust Communication**: WebSocket with auto-reconnection
+- 🤖 **Google Gemini Integration**: Advanced AI analysis for screenshots and text
+- 📱 **Mobile Browser Client**: Real-time display and sync
+- 🪟 **Desktop Overlay**: Floating PyQt5 window with drag, scroll, and hotkey support
+- 🔒 **Single Instance**: Prevents multiple overlay windows
+- 🔥 **Hot Reload**: Development mode with automatic file watching and reloading
 
 ## Usage
 
-1. After starting, open your mobile browser and visit `http://<PC_IP>:8080/`
-2. Use your phone to take screenshots, enter questions, and request AI analysis
-3. Use global hotkeys on the desktop to show the overlay and view/scroll AI answers
+### Desktop Overlay Controls
+- **F7**: Capture screenshot → AI analyzes and answers
+- **F8**: Send clipboard content → AI solves with code
+- **F9**: Show overlay window
+- **F10**: Hide overlay window
 
----
+### Mobile Browser Sync
+- Open `http://<PC_IP>:8080/` on your mobile browser
+- View real-time AI responses synchronized from desktop overlay
+- Responses appear automatically in both overlay and mobile browser
+
+## Architecture
+
+### Directory Structure
+```
+SnapAI/
+├── src/
+│   ├── core/                    # Core business logic
+│   │   ├── ai_service.py       # Google Gemini AI integration
+│   │   └── websocket_handler.py # WebSocket message handling
+│   ├── clients/                 # Client implementations
+│   │   ├── overlay_window.py   # Desktop overlay (PyQt5)
+│   │   └── websocket_client.py # WebSocket client for overlay
+│   ├── server/                  # Server components
+│   │   ├── flask_app.py        # Flask web server
+│   │   ├── websocket_server.py # WebSocket server
+│   │   └── main_server.py      # Combined server orchestrator
+│   └── process_manager/         # Process management
+│       └── process_manager.py  # Process monitoring & restart
+├── templates/
+│   └── mobile.html             # Mobile browser client
+├── static/                     # Static web assets
+├── server.py                   # Server entry point
+├── overlay.py                  # Overlay entry point
+├── main.py                     # Main launcher
+└── snap.ai.bat                 # Windows batch launcher
+```
+
+### Connection Flow
+```
+Desktop Overlay (F7/F8) → WebSocket → Central Server → Gemini AI
+                                    ↓
+                              Broadcast Response
+                                    ↓
+                    Desktop Overlay ← → Mobile Browser
+```
 
 ## Troubleshooting
 
+### Connection Issues
 - **WebSocket connection fails?**
-  - Check firewall settings for port 8765
-  - Ensure PC and phone are on the same LAN
+  - Check firewall settings for ports 8080 and 8765
+  - Ensure PC and mobile device are on the same LAN
+  - Verify server is running: `python server.py`
+
+- **Mobile browser not syncing?**
+  - Check WebSocket connection status in browser console
+  - Try refreshing the mobile page
+  - Verify server logs for client connections
+
+### AI Response Issues
 - **No AI response?**
-  - Check if the API key is correct and quota is sufficient
-  - Check terminal logs for errors
-- **Dependency installation fails?**
-  - Upgrade pip: `python -m pip install --upgrade pip`
-  - Use a mirror: `pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt`
-- **Overlay hotkeys not working?**
-  - Ensure the `keyboard` package is installed and run as administrator
+  - Verify Gemini API key in `.env` file
+  - Check API quota and billing status
+  - Review server logs for AI service errors
 
----
+- **Slow AI responses?**
+  - Check internet connection
+  - Verify Gemini API status
 
-## References & Credits
+### System Issues
+- **Hotkeys not working?**
+  - Run as administrator (Windows)
+  - Ensure `keyboard` package is installed
+  - Check if overlay window has focus
 
-- [Google Gemini API](https://ai.google.dev/)
-- [PyQt5 Documentation](https://doc.qt.io/qtforpython/)
-- [python-dotenv](https://pypi.org/project/python-dotenv/)
-- [Project inspiration](https://github.com/faketut/interview.ai)
+- **Multiple overlay windows?**
+  - The system now prevents multiple overlay instances
+  - If you see multiple windows, restart the application
+  - Check for stale lock files in the project directory
 
----
+## Development
+
+### Hot Reload Development Server
+The project includes a development server with hot reload capabilities for faster development:
+
+```sh
+# Start development server
+python dev_server.py --debug
+
+# Or use Windows batch
+dev.bat
+```
+
+**Features:**
+- 🔥 **Automatic Reload**: Changes to Python files trigger server restart
+- 📱 **Template Reload**: HTML template changes are reflected immediately
+- 🎨 **CSS Reload**: Static file changes are detected and served
+- 📊 **File Watching**: Monitors `templates/`, `static/`, and `src/` directories
+- 🐛 **Debug Mode**: Enhanced logging and error reporting
+
+**Watched File Types:**
+- `.py` files → Server restart
+- `.html` files → Template reload
+- `.css` files → Static file reload
+- `.js` files → Static file reload
+
+## Technical Details
+
+### Key Components
+- **Central Server**: Flask + WebSocket server managing all clients
+- **Desktop Client**: PyQt5 overlay with singleton pattern
+- **Mobile Client**: HTML/JavaScript with WebSocket connection
+- **Process Management**: Auto-restart failed components
+- **Instance Control**: Prevents multiple overlay windows
+- **Hot Reload**: File watching and automatic reloading for development
+
+### Performance Features
+- **Concurrent Broadcasting**: AI responses sent to all clients simultaneously
+- **Connection Pooling**: Efficient client management with auto-cleanup
+- **Memory Optimization**: Proper resource cleanup and garbage collection
+- **Error Recovery**: Automatic reconnection and process restart capabilities
 
 ## License
 
