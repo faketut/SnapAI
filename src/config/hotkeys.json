@@ -1,0 +1,6 @@
+{
+    "capture_screenshot": "f7",
+    "process_clipboard": "f8",
+    "show_overlay": "f9",
+    "hide_overlay": "f10"
+}

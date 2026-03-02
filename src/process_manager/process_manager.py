@@ -30,26 +30,38 @@ class ProcessManager:
         # Get the project root directory (3 levels up from this file)
         self.base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-    def _create_process(self, script_name: str, env: Optional[dict] = None) -> subprocess.Popen:
+    def _create_process(self, component_flag: str, env: Optional[dict] = None) -> subprocess.Popen:
         """Create a new process with proper environment and error handling"""
-        script_path = os.path.join(self.base_path, script_name)
-        if not os.path.exists(script_path):
-            raise FileNotFoundError(f"Script not found: {script_path}")
-
         # Prepare environment
         proc_env = os.environ.copy()
         if env:
             proc_env.update(env)
 
         # Create process with proper configuration
+        kwargs = {
+            'stdout': subprocess.PIPE,
+            'stderr': subprocess.PIPE,
+            'env': proc_env,
+            'cwd': self.base_path,
+            'universal_newlines': True,
+        }
+        
+        if platform.system() == "Windows":
+            kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs['start_new_session'] = True
+
+        if getattr(sys, 'frozen', False):
+            # Running as a bundled executable
+            cmd = [sys.executable, component_flag]
+        else:
+            # Running as a Python script
+            main_script = os.path.join(self.base_path, 'main.py')
+            cmd = [sys.executable, main_script, component_flag]
+
         return subprocess.Popen(
-            [sys.executable, script_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=proc_env,
-            cwd=self.base_path,
-            universal_newlines=True,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # Windows-specific
+            cmd,
+            **kwargs
         )
 
     def _check_port_available(self, port: int) -> bool:
@@ -108,8 +120,8 @@ class ProcessManager:
             if not self._check_port_available(8765):
                 raise RuntimeError("Port 8765 is already in use")
 
-            # Start server.py
-            self.server_proc = self._create_process('server.py')
+            # Start server module
+            self.server_proc = self._create_process('--server')
             logger.info("Started server process")
 
             # Wait for server to initialize
@@ -125,8 +137,8 @@ class ProcessManager:
                 logger.info("Overlay process is already running, skipping overlay start")
                 self.overlay_proc = None  # Mark as None since we didn't start it
             else:
-                # Start overlay.py
-                self.overlay_proc = self._create_process('overlay.py')
+                # Start overlay module
+                self.overlay_proc = self._create_process('--client')
                 logger.info("Started overlay process")
 
             # Quick check for immediate failures (only if we started the process)
@@ -219,10 +231,10 @@ class ProcessManager:
 
         try:
             if proc_name == "server":
-                self.server_proc = self._create_process('server.py')
+                self.server_proc = self._create_process('--server')
                 time.sleep(STARTUP_WAIT)
             else:  # overlay
-                self.overlay_proc = self._create_process('overlay.py')
+                self.overlay_proc = self._create_process('--client')
             
             logger.info(f"Successfully restarted {proc_name}")
             return True

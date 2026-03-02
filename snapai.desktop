@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SnapAI
+Comment=AI Assistant with Desktop Overlay
+Exec=/root/code/SnapAI/run_snapai.sh
+Icon=/root/code/SnapAI/snap_ai_minimalist_ui_mockup.png
+Terminal=false
+Categories=Utility;AI;
+StartupNotify=true

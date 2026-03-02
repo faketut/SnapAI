@@ -6,11 +6,13 @@ import keyboard
 import numpy as np
 from PIL import ImageGrab
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QScrollArea
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QScrollArea, QSystemTrayIcon, QMenu, QAction
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, QBuffer, QIODevice
-from PyQt5.QtGui import QFont, QImage
+from PyQt5.QtGui import QFont, QImage, QIcon
 
 from .websocket_client import WebSocketClient
+from ..core.hotkey_manager import HotkeyManager
+from .hotkey_dialog import HotkeyConfigDialog
 
 PROMPT_PREFIX = "use code to solve: "
 
@@ -32,6 +34,8 @@ class OverlayWindow(QMainWindow):
             super().__init__()
             self._setup_ui()
             self._setup_websocket()
+            self.hotkey_manager = HotkeyManager()
+            self._setup_tray()
             self._setup_hotkeys()
             OverlayWindow._initialized = True
         else:
@@ -43,26 +47,60 @@ class OverlayWindow(QMainWindow):
     def _setup_ui(self) -> None:
         """Initialize UI components"""
         # Window properties
-        self.setWindowTitle("AI Assistant")
-        self.setFixedSize(651, 413)
+        self.setWindowTitle("SnapAI")
+        self.setFixedSize(600, 400)
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setWindowOpacity(0.7)
+        self.setWindowOpacity(0.9)
         self.setFocusPolicy(Qt.StrongFocus)
+
+        # Main background widget
+        self.central_widget = QLabel(self)
+        self.central_widget.setGeometry(0, 0, 600, 400)
+        self.central_widget.setStyleSheet("""
+            background-color: rgba(13, 17, 23, 230);
+            border: 1px solid #30363d;
+            border-radius: 12px;
+        """)
 
         # Scroll area and label
         self.scroll_area = QScrollArea(self)
-        self.scroll_area.setGeometry(10, 10, 631, 393)
+        self.scroll_area.setGeometry(15, 15, 570, 370)
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet("background: transparent; border: none;")
+        self.scroll_area.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: transparent;
+                width: 6px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #30363d;
+                min-height: 20px;
+                border-radius: 3px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+        """)
 
         self.label = QLabel()
-        self.label.setText("Waiting...")
-        self.label.setFont(QFont("Times New Roman", 12))
-        self.label.setStyleSheet("color: white; background-color: rgba(0, 0, 0, 150); border-radius: 10px;")
+        self.label.setText("INITIALIZING...")
+        self.label.setFont(QFont("Arial", 11, QFont.Medium))
+        self.label.setStyleSheet("""
+            color: #f0f6fc;
+            background: transparent;
+            padding: 5px;
+            line-height: 1.5;
+        """)
         self.label.setWordWrap(True)
         self.label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.label.setFixedWidth(611)
+        # We don't need setFixedWidth here because setWidgetResizable(True) is used
 
         self.scroll_area.setWidget(self.label)
 
@@ -108,12 +146,87 @@ class OverlayWindow(QMainWindow):
         self.ws_client = WebSocketClient(self.answer_signal.emit)
         self.ws_client.start()
 
+    def _setup_tray(self) -> None:
+        """Initialize system tray icon and menu"""
+        self.tray_icon = QSystemTrayIcon(self)
+        
+        # Use a default icon or a specific one if available
+        # For now, we'll try to use the mockup or a fallback
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "snap_ai_minimalist_ui_mockup.png")
+        if os.path.exists(icon_path):
+            self.tray_icon.setIcon(QIcon(icon_path))
+        else:
+            self.tray_icon.setIcon(self.style().standardIcon(self.style().SP_ComputerIcon))
+        
+        tray_menu = QMenu()
+        
+        show_action = QAction("Show Overlay", self)
+        show_action.triggered.connect(self.show)
+        
+        hide_action = QAction("Hide Overlay", self)
+        hide_action.triggered.connect(self.hide)
+        
+        config_action = QAction("Configure Hotkeys", self)
+        config_action.triggered.connect(self.open_hotkey_config)
+        
+        quit_action = QAction("Quit SnapAI", self)
+        quit_action.triggered.connect(QApplication.instance().quit)
+        
+        tray_menu.addAction(show_action)
+        tray_menu.addAction(hide_action)
+        tray_menu.addSeparator()
+        tray_menu.addAction(config_action)
+        tray_menu.addSeparator()
+        tray_menu.addAction(quit_action)
+        
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.show()
+        
+        # Double click to show/hide
+        self.tray_icon.activated.connect(self._on_tray_activated)
+
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.DoubleClick:
+            if self.isVisible():
+                self.hide()
+            else:
+                self.show()
+
+    def open_hotkey_config(self) -> None:
+        """Open the hotkey configuration dialog"""
+        dialog = HotkeyConfigDialog(self.hotkey_manager, self)
+        if dialog.exec_() == HotkeyConfigDialog.Accepted:
+            new_hotkeys = dialog.get_configured_hotkeys()
+            for action, key in new_hotkeys.items():
+                self.hotkey_manager.set_hotkey(action, key)
+            
+            # Reload hotkeys instantly
+            self.reload_hotkeys()
+
+    def reload_hotkeys(self) -> None:
+        """Unregister old hotkeys and register new ones"""
+        try:
+            keyboard.unhook_all()
+            self._setup_hotkeys()
+            self.update_answer("Hotkeys updated successfully!")
+        except Exception as e:
+            self.update_answer(f"Failed to reload hotkeys: {str(e)}")
+
     def _setup_hotkeys(self) -> None:
         """Setup global hotkeys for overlay controls"""
-        keyboard.add_hotkey('f7', self.capture_and_send_screenshot)
-        keyboard.add_hotkey('f8', self.send_clipboard_to_server)
-        keyboard.add_hotkey('f9', self.show)
-        keyboard.add_hotkey('f10', self.hide)
+        capture_key = self.hotkey_manager.get_hotkey("capture_screenshot")
+        clipboard_key = self.hotkey_manager.get_hotkey("process_clipboard")
+        show_key = self.hotkey_manager.get_hotkey("show_overlay")
+        hide_key = self.hotkey_manager.get_hotkey("hide_overlay")
+
+        if capture_key:
+            keyboard.add_hotkey(capture_key, self.capture_and_send_screenshot)
+        if clipboard_key:
+            keyboard.add_hotkey(clipboard_key, self.send_clipboard_to_server)
+        if show_key:
+            keyboard.add_hotkey(show_key, self.show)
+        if hide_key:
+            keyboard.add_hotkey(hide_key, self.hide)
 
     def send_clipboard_to_server(self) -> None:
         """Read clipboard text or image and send to server"""

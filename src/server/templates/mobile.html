@@ -8,23 +8,24 @@
 </head>
 <body>
     <div class="container">
-        <div class="header">
+        <header class="header">
             <div id="connectionStatus">
                 <span class="status-indicator status-disconnected"></span>
-                SnapAI Mobile Client
+                SNAPAI MOBILE
             </div>
-            <div id="lastActivity">Waiting for connection...</div>
-        </div>
+            <div id="lastActivity">INITIALIZING...</div>
+        </header>
         
-        <div id="aiResponse">
+        <main id="aiResponse">
             <div class="ai-response-content empty-state">
-                Waiting for AI response from overlay window...
+                WAITING FOR AI RESPONSE FROM OVERLAY...
                 <br><br>
-                Use F7 or F8 in the overlay to send queries.
+                USE F7 OR F8 TO SEND QUERIES.
             </div>
             <div class="timestamp" id="responseTimestamp"></div>
-            <button id="refreshSyncBtn" class="refresh-button">Refresh Sync</button>
-        </div>
+        </main>
+        
+        <button id="refreshSyncBtn" class="refresh-button">REFRESH SYNC</button>
     </div>
 
     <script>
@@ -94,7 +95,9 @@
         
         function connect() {
             try {
-                ws = new WebSocket('ws://' + window.location.hostname + ':8765');
+                const wsUrl = 'ws://' + window.location.hostname + ':8765';
+                console.log('Attempting to connect to:', wsUrl);
+                ws = new WebSocket(wsUrl);
                 
                 ws.onopen = () => {
                     console.log('WebSocket connected');
@@ -106,14 +109,14 @@
                 
                 ws.onclose = (event) => {
                     console.log('WebSocket disconnected:', event.code, event.reason);
-                    updateConnectionStatus(false, 'Disconnected from server');
+                    updateConnectionStatus(false, `Disconnected: ${event.code} - ${event.reason}`);
                     stopHeartbeat();
                     attemptReconnect();
                 };
                 
                 ws.onerror = (error) => {
                     console.error('WebSocket error:', error);
-                    updateConnectionStatus(false, 'Connection error');
+                    updateConnectionStatus(false, 'Connection error - check server logs');
                 };
                 
                 ws.onmessage = (event) => {

@@ -40,6 +40,7 @@ class WebSocketServer:
     def start(self) -> None:
         """Start WebSocket server in a separate thread"""
         try:
+            logger.info(f"Starting WebSocket server on {self.host}:{self.port}")
             self.loop = asyncio.new_event_loop()
             self.thread = threading.Thread(
                 target=self._run_websocket_loop,
@@ -47,6 +48,7 @@ class WebSocketServer:
                 name="WebSocketServer"
             )
             self.thread.start()
+            logger.info("WebSocket server thread started")
         except Exception as e:
             logger.error(f"Failed to start WebSocket server: {e}")
             # Try alternative port
@@ -58,22 +60,36 @@ class WebSocketServer:
     def _run_websocket_loop(self) -> None:
         """Run WebSocket server in event loop"""
         try:
+            logger.info("Setting up WebSocket event loop")
             asyncio.set_event_loop(self.loop)
+            logger.info("Starting WebSocket server event loop")
             self.loop.run_until_complete(self.run_websocket_server())
         except OSError as e:
             if e.errno == 10048:  # Port already in use
                 logger.warning(f"Port {self.port} is already in use, WebSocket server not started")
             else:
-                logger.error(f"WebSocket server error: {e}")
+                logger.error(f"WebSocket server OSError: {e}")
         except Exception as e:
             logger.error(f"WebSocket server error: {e}")
+            import traceback
+            logger.error(f"WebSocket server traceback: {traceback.format_exc()}")
         finally:
-            if not self.loop.is_closed():
+            logger.info("WebSocket server event loop finished")
+            if self.loop and not self.loop.is_closed():
                 self.loop.close()
+    
+    def is_running(self) -> bool:
+        """Check if WebSocket server is running"""
+        return (self.thread is not None and 
+                self.thread.is_alive() and 
+                self.loop is not None and 
+                not self.loop.is_closed())
     
     def stop(self) -> None:
         """Stop WebSocket server"""
+        logger.info("Stopping WebSocket server...")
         if self.loop and not self.loop.is_closed():
             self.loop.call_soon_threadsafe(self.loop.stop)
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=2)
+        logger.info("WebSocket server stopped")

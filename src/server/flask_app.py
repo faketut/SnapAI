@@ -14,14 +14,13 @@ class FlaskApp:
         
         # Get the project root directory
         # This file is in src/server/flask_app.py
-        # We need to go up 2 levels to get to the project root
-        current_file = os.path.abspath(__file__)
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+        # Web assets are now siblings in this directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
         
-        template_path = os.path.join(project_root, 'templates')
-        static_path = os.path.join(project_root, 'static')
+        template_path = os.path.join(current_dir, 'templates')
+        static_path = os.path.join(current_dir, 'static')
         
-        logger.info(f"Project root: {project_root}")
+        logger.info(f"Server directory: {current_dir}")
         logger.info(f"Template path: {template_path}")
         logger.info(f"Template exists: {os.path.exists(template_path)}")
         
@@ -44,10 +43,41 @@ class FlaskApp:
         @self.app.route('/health')
         def health():
             return {'status': 'ok', 'service': 'SnapAI Mobile Client'}, 200
+        
+        @self.app.route('/network')
+        def network_info():
+            """Network information endpoint for debugging"""
+            try:
+                import socket
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                    s.connect(("8.8.8.8", 80))
+                    local_ip = s.getsockname()[0]
+                
+                return {
+                    'local_ip': local_ip,
+                    'server_host': self.host,
+                    'server_port': self.port,
+                    'websocket_url': f'ws://{local_ip}:8765',
+                    'http_url': f'http://{local_ip}:{self.port}',
+                    'status': 'ok'
+                }
+            except Exception as e:
+                return {'error': str(e), 'status': 'error'}, 500
     
     def run(self, debug_mode: bool = False) -> None:
         """Run Flask server with improved configuration"""
         logger.info(f"HTTP server running on http://{self.host}:{self.port}")
+        
+        # Get local IP for external access
+        try:
+            import socket
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+            logger.info(f"External access: http://{local_ip}:{self.port}")
+        except Exception:
+            logger.warning("Could not determine external IP address")
+        
         try:
             self.app.run(
                 host=self.host, 

@@ -38,9 +38,21 @@ class MainServer:
         self.hot_reload.start()
 
         # Start WebSocket server
+        logger.info("Starting WebSocket server...")
         self.ws_server.start()
         
+        # Wait a moment for WebSocket server to start
+        import time
+        time.sleep(1)
+        
+        # Check if WebSocket server is running
+        if self.ws_server.is_running():
+            logger.info("✓ WebSocket server is running")
+        else:
+            logger.warning("✗ WebSocket server failed to start")
+        
         # Start Flask server (blocking)
+        logger.info("Starting Flask server...")
         self.flask_app.run(debug_mode=self.debug_mode)
     
     def stop(self) -> None:
