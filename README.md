@@ -42,81 +42,42 @@ The architecture consists of:
 ## Prerequisites
 
 - Python 3.8+ installed
-- Google Gemini API Key
-- Git installed
 
 ## Setup Instructions
 
-### 1. Clone the Repository
+### Windows Setup
 
-```bash
-git clone https://github.com/faketut/snapai.git
-cd SnapAI
-```
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/faketut/snapai.git
+    cd SnapAI
+    ```
+2.  **Install Dependencies**:
+    ```powershell
+    setup_venv.bat
+    .venv\Scripts\activate
+    pip install -r requirements.txt
+    ```
+3.  **Run SnapAI**:
+    ```powershell
+    python main.py
+    ```
 
-### 2. Set up Environment
+### Desktop Overlay Features
 
-1. Create and activate a virtual environment using the provided scripts:
-
-**Linux/macOS:**
-```bash
-chmod +x setup_venv.sh
-./setup_venv.sh
-source .venv/bin/activate
-```
-
-**Windows:**
-```bash
-./setup_venv.bat
-.venv\Scripts\activate
-```
-
-2. All necessary dependencies from `requirements.txt` will be installed automatically by the setup scripts.
-
-### 3. Configure Environment Variables
-
-Create a `.env` file in the project root directory and add your Gemini API key:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-### 4. Launch the Application
-
-Start the integrated system using the main launcher:
-
-```bash
-python main.py
-```
-
-For Windows users, you can also use the provided batch script:
-
-```bash
-./snap.ai.bat
-```
-
-## System Usage
-
-### Desktop Overlay Controls
-
-The system listens for global hotkeys to trigger AI interactions:
-
-- **F7**: Captures current screen area and sends it to Gemini for analysis.
-- **F8**: Reads text or image from clipboard and provides a coded solution.
-- **F9**: Toggles display of the overlay window.
-- **F10**: Hides the overlay window completely.
-
-### Desktop App Features
-
--   **System Tray Integration**: SnapAI now runs in the system tray. Double-click the tray icon to show/hide the overlay.
--   **Real-time Configuration**: Right-click the tray icon and select **Configure Hotkeys** to remap shortcuts instantly without restarting the application.
--   **Standard Launcher**: Use the provided `snapai.desktop` (Linux) or `snapai.bat` (Windows) to launch the app like any other desktop application.
+-   **System Tray Integration**: SnapAI runs in the background. Right-click the tray icon for quick controls.
+-   **Configurable Hotkeys**: Update your shortcuts in `src/config/hotkeys.json` or via the "Configure Hotkeys" dialog in the tray menu.
+-   **Local AI Analysis**: Uses Google Gemini to analyze your screen or clipboard and provide coded solutions instantly.
+-   **Mobile Remote Trigger**: Use the mobile UI to trigger screenshots on your PC and receive the results instantly on your phone.
 
 ### Mobile Synchronization
-
 1. Open your mobile browser and navigate to `http://<YOUR_PC_IP>:8080/`.
-2. All AI responses generated on the desktop will appear automatically on your mobile device.
-3. Use the **REFRESH SYNC** button to fetch the latest response if the connection was interrupted.
+2. Use the **📸 TAKE SCREENSHOT** button to remotely trigger a capture on your PC.
+3. The AI response will appear automatically on your mobile device.
+
+To create a standalone executable:
+1. Follow the instructions in [WINDOWS_PACKAGING.md](file:///root/code/SnapAI/WINDOWS_PACKAGING.md).
+2. Run `pyinstaller --clean snapai.spec` on a Windows host.
 
 ## Project Structure
 

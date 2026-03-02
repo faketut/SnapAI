@@ -10,6 +10,7 @@ from PyQt5.QtCore import QObject
 
 class WebSocketClient(QObject):
     """WebSocket client for handling server communication"""
+    screenshot_signal = pyqtSignal()
     
     def __init__(self, callback, ws_url: str = "ws://localhost:8765"):
         super().__init__()
@@ -84,6 +85,8 @@ class WebSocketClient(QObject):
                                 answer = data.get("answer", "No answer")
                                 if self.callback:
                                     self.callback(answer)
+                            elif data.get("type") == "screenshot_request":
+                                self.screenshot_signal.emit()
                             elif data.get("type") == "error":
                                 if self.callback:
                                     self.callback(f"Server error: {data.get('message', 'Unknown error')}")

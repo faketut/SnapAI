@@ -1,1 +1,56 @@
-./.env
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Environment variables
+.env
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+# We keep snapai.spec as it contains custom build logic
+*.manifest
+# *.spec  <-- Removed to keep snapai.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.pytest_cache/
+.nosepy
+nosetests.xml
+coverage.xml
+*.cover
+.stack-work/
+
+# IDEs
+.vscode/
+.idea/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/

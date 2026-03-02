@@ -29,7 +29,7 @@ pip install pyinstaller
 Run PyInstaller using the provided `.spec` file. This file contains all the necessary configurations (assets, hidden imports, etc.):
 
 ```powershell
-pyinstaller --clean snapai.spec
+.\.venv\Scripts\python.exe -m PyInstaller --clean snapai.spec
 ```
 
 ### 4. Locate your Application

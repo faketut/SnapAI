@@ -1,7 +1,7 @@
 import base64
 from io import BytesIO
 from typing import Optional
-
+import os
 import keyboard
 import numpy as np
 from PIL import ImageGrab
@@ -144,6 +144,7 @@ class OverlayWindow(QMainWindow):
     def _setup_websocket(self) -> None:
         """Initialize WebSocket client and start it"""
         self.ws_client = WebSocketClient(self.answer_signal.emit)
+        self.ws_client.screenshot_signal.connect(self.capture_and_send_screenshot)
         self.ws_client.start()
 
     def _setup_tray(self) -> None:

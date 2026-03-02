@@ -7,9 +7,8 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('src/server/templates', 'templates'),
-        ('src/server/static', 'static'),
-        ('src/config', 'config'),
+        ('src/config', 'src/config'),
+        ('src/server/templates', 'src/server/templates'),
     ],
     hiddenimports=[
         'src.server.main_server',

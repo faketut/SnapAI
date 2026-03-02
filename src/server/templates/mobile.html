@@ -1,254 +1,150 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snap.AI Display Client</title>
-    <link rel="stylesheet" href="/static/mobile.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SnapAI Mobile</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        h1 {
+            color: #58a6ff;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .status {
+            font-size: 14px;
+            margin-bottom: 20px;
+            color: #8b949e;
+        }
+
+        .answer-container {
+            width: 100%;
+            max-width: 500px;
+            background-color: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            min-height: 100px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        button {
+            flex: 1;
+            background-color: #238636;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:active {
+            background-color: #2ea043;
+        }
+
+        button#syncBtn {
+            background-color: #21262d;
+            border: 1px solid #30363d;
+        }
+
+        button#captureBtn {
+            background-color: #58a6ff;
+        }
+
+        button#captureBtn:active {
+            background-color: #1f6feb;
+        }
+    </style>
 </head>
+
 <body>
-    <div class="container">
-        <header class="header">
-            <div id="connectionStatus">
-                <span class="status-indicator status-disconnected"></span>
-                SNAPAI MOBILE
-            </div>
-            <div id="lastActivity">INITIALIZING...</div>
-        </header>
-        
-        <main id="aiResponse">
-            <div class="ai-response-content empty-state">
-                WAITING FOR AI RESPONSE FROM OVERLAY...
-                <br><br>
-                USE F7 OR F8 TO SEND QUERIES.
-            </div>
-            <div class="timestamp" id="responseTimestamp"></div>
-        </main>
-        
-        <button id="refreshSyncBtn" class="refresh-button">REFRESH SYNC</button>
+    <h1>SnapAI Sync</h1>
+    <div id="status" class="status">Connecting...</div>
+
+    <div id="answer" class="answer-container">Waiting for AI response...</div>
+
+    <div class="controls">
+        <button id="captureBtn">📸 TAKE SCREENSHOT</button>
+        <button id="syncBtn">🔄 SYNC</button>
     </div>
 
     <script>
-        let ws = null;
-        let reconnectAttempts = 0;
-        let maxReconnectAttempts = 10;
-        let reconnectDelay = 1000;
-        let heartbeatInterval = null;
-        let lastMessageTime = Date.now();
-        
-        const connectionStatus = document.getElementById('connectionStatus');
-        const lastActivity = document.getElementById('lastActivity');
-        const aiResponseContent = document.querySelector('.ai-response-content');
-        const responseTimestamp = document.getElementById('responseTimestamp');
-        const refreshSyncBtn = document.getElementById('refreshSyncBtn');
-        
-        // Store last response in localStorage for persistence
-        const STORAGE_KEY = 'snapai_last_response';
-        
-        function updateConnectionStatus(connected, message) {
-            const indicator = connectionStatus.querySelector('.status-indicator');
-            if (connected) {
-                indicator.className = 'status-indicator status-connected';
-                connectionStatus.innerHTML = '<span class="status-indicator status-connected"></span>SnapAI Mobile Client';
-            } else {
-                indicator.className = 'status-indicator status-disconnected';
-                connectionStatus.innerHTML = '<span class="status-indicator status-disconnected"></span>SnapAI Mobile Client';
-            }
-            lastActivity.textContent = message;
-        }
-        
-        function updateLastActivity(message) {
-            lastActivity.textContent = message + ' - ' + new Date().toLocaleTimeString();
-        }
-        
-        function displayAIResponse(answer, timestamp) {
-            aiResponseContent.textContent = answer;
-            aiResponseContent.className = 'ai-response-content';
-            responseTimestamp.textContent = 'Received: ' + new Date(timestamp).toLocaleString();
-            updateLastActivity('AI Response received');
-            
-            // Store in localStorage for persistence
-            const responseData = {
-                answer: answer,
-                timestamp: timestamp,
-                receivedAt: Date.now()
-            };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(responseData));
-        }
-        
-        function loadStoredResponse() {
-            try {
-                const stored = localStorage.getItem(STORAGE_KEY);
-                if (stored) {
-                    const data = JSON.parse(stored);
-                    // Only show if less than 1 hour old
-                    if (Date.now() - data.receivedAt < 3600000) {
-                        displayAIResponse(data.answer, data.timestamp);
-                        return true;
-                    }
-                }
-            } catch (e) {
-                console.error('Error loading stored response:', e);
-            }
-            return false;
-        }
-        
+        let ws;
+        const statusEl = document.getElementById('status');
+        const answerEl = document.getElementById('answer');
+        const captureBtn = document.getElementById('captureBtn');
+        const syncBtn = document.getElementById('syncBtn');
+
         function connect() {
-            try {
-                const wsUrl = 'ws://' + window.location.hostname + ':8765';
-                console.log('Attempting to connect to:', wsUrl);
-                ws = new WebSocket(wsUrl);
-                
-                ws.onopen = () => {
-                    console.log('WebSocket connected');
-                    reconnectAttempts = 0;
-                    reconnectDelay = 1000;
-                    updateConnectionStatus(true, 'Connected to server');
-                    startHeartbeat();
-                };
-                
-                ws.onclose = (event) => {
-                    console.log('WebSocket disconnected:', event.code, event.reason);
-                    updateConnectionStatus(false, `Disconnected: ${event.code} - ${event.reason}`);
-                    stopHeartbeat();
-                    attemptReconnect();
-                };
-                
-                ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
-                    updateConnectionStatus(false, 'Connection error - check server logs');
-                };
-                
-                ws.onmessage = (event) => {
-                    lastMessageTime = Date.now();
-                    console.log('Received message:', event.data);
-                    const data = JSON.parse(event.data);
-                    
-                    if (data.type === 'welcome') {
-                        console.log('Server welcome:', data.message);
-                        updateConnectionStatus(true, 'Connected to server');
-                    } else if (data.type === 'ai_response') {
-                        console.log('AI Response received:', data.answer);
-                        displayAIResponse(data.answer, data.timestamp);
-                    } else if (data.type === 'sync_response') {
-                        console.log('Sync response received:', data.answer);
-                        if (data.answer && data.answer.trim() !== '') {
-                            displayAIResponse(data.answer, data.timestamp);
-                            updateLastActivity('Synced from overlay');
-                        } else {
-                            updateLastActivity('No content in overlay to sync');
-                        }
-                    } else if (data.type === 'error') {
-                        console.error('Server error:', data.message);
-                        updateLastActivity('Error: ' + data.message);
-                    } else if (data.type === 'pong') {
-                        console.log('Heartbeat pong received');
-                    } else {
-                        console.log('Other message type:', data.type);
-                        updateLastActivity('Message received');
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.hostname}:8765`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusEl.innerText = 'Connected to SnapAI PC';
+                statusEl.style.color = '#3fb950';
+                ws.send(jsonStr({ command: 'sync_request' }));
+            };
+
+            ws.onclose = () => {
+                statusEl.innerText = 'Disconnected. Retrying...';
+                statusEl.style.color = '#f85149';
+                setTimeout(connect, 3000);
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'ai_response' || data.type === 'sync_response') {
+                    if (data.answer) {
+                        answerEl.innerText = data.answer;
                     }
-                };
-            } catch (error) {
-                console.error('Failed to create WebSocket:', error);
-                updateConnectionStatus(false, 'Connection failed');
-                attemptReconnect();
-            }
-        }
-        
-        function startHeartbeat() {
-            stopHeartbeat();
-            heartbeatInterval = setInterval(() => {
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({command: 'ping'}));
                 }
-            }, 30000); // Send ping every 30 seconds
+            };
         }
-        
-        function stopHeartbeat() {
-            if (heartbeatInterval) {
-                clearInterval(heartbeatInterval);
-                heartbeatInterval = null;
+
+        function jsonStr(obj) { return JSON.stringify(obj); }
+
+        captureBtn.onclick = () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(jsonStr({ command: 'screenshot_request' }));
+                statusEl.innerText = 'Screenshot requested...';
             }
-        }
-        
-        function attemptReconnect() {
-            if (reconnectAttempts >= maxReconnectAttempts) {
-                console.log('Max reconnection attempts reached');
-                updateLastActivity('Max reconnection attempts reached');
-                return;
+        };
+
+        syncBtn.onclick = () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(jsonStr({ command: 'sync_request' }));
             }
-            
-            reconnectAttempts++;
-            const delay = Math.min(reconnectDelay * Math.pow(2, reconnectAttempts - 1), 30000);
-            
-            console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
-            updateLastActivity(`Reconnecting in ${Math.round(delay/1000)}s (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
-            
-            setTimeout(() => {
-                if (ws && ws.readyState === WebSocket.CLOSED) {
-                    connect();
-                }
-            }, delay);
-        }
-        
-        function checkConnectionHealth() {
-            const now = Date.now();
-            const timeSinceLastMessage = now - lastMessageTime;
-            
-            // If no message received for 2 minutes, try to reconnect
-            if (timeSinceLastMessage > 120000 && ws && ws.readyState === WebSocket.OPEN) {
-                console.log('No messages received for 2 minutes, reconnecting...');
-                ws.close();
-            }
-        }
-        
-        function refreshSync() {
-            console.log('Manual sync requested');
-            refreshSyncBtn.disabled = true;
-            refreshSyncBtn.textContent = 'Syncing...';
-            
-            // Try to reconnect if disconnected
-            if (!ws || ws.readyState === WebSocket.CLOSED) {
-                console.log('Reconnecting for manual sync...');
-                reconnectAttempts = 0; // Reset attempts for manual refresh
-                connect();
-            } else if (ws.readyState === WebSocket.OPEN) {
-                // Send sync request to get current overlay content
-                console.log('Requesting sync from overlay...');
-                ws.send(JSON.stringify({
-                    command: 'sync_request',
-                    timestamp: new Date().toISOString()
-                }));
-            }
-            
-            // Re-enable button after 5 seconds
-            setTimeout(() => {
-                refreshSyncBtn.disabled = false;
-                refreshSyncBtn.textContent = 'Refresh Sync';
-            }, 5000);
-            
-            updateLastActivity('Sync requested from overlay');
-        }
-        
-        // Initialize
-        function init() {
-            // Load any stored response first
-            if (!loadStoredResponse()) {
-                updateLastActivity('Waiting for connection...');
-            }
-            
-            // Connect to WebSocket
-            connect();
-            
-            // Check connection health every minute
-            setInterval(checkConnectionHealth, 60000);
-            
-            // Add refresh button event listener
-            refreshSyncBtn.addEventListener('click', refreshSync);
-        }
-        
-        // Start the application
-        init();
+        };
+
+        connect();
     </script>
 </body>
+
 </html>

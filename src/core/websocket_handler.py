@@ -71,6 +71,8 @@ class WebSocketHandler:
                 await self._handle_ai_query_text(websocket, data)
             elif command == 'sync_request':
                 await self._handle_sync_request(websocket, data)
+            elif command == 'screenshot_request':
+                await self._handle_screenshot_request(websocket)
             elif command == 'ping':
                 await websocket.send(json.dumps({
                     'type': 'pong',
@@ -149,6 +151,15 @@ class WebSocketHandler:
             }
             await websocket.send(json.dumps(sync_response))
             logger.info(f"No previous response to sync for client {id(websocket)}")
+
+    async def _handle_screenshot_request(self, websocket: websockets.WebSocketServerProtocol) -> None:
+        """Handle request from mobile to trigger screenshot on desktop"""
+        logger.info(f"Screenshot request from client {id(websocket)}")
+        # Broadcast the request so the desktop overlay receives it
+        await self._broadcast_to_others(websocket, {
+            'type': 'screenshot_request',
+            'timestamp': datetime.now().isoformat()
+        })
     
     async def _broadcast_to_others(self, sender: websockets.WebSocketServerProtocol, 
                                   message: dict) -> None:
