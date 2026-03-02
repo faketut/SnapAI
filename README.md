@@ -50,7 +50,7 @@ The architecture consists of:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-repo/SnapAI.git
+git clone https://github.com/faketut/snapai.git
 cd SnapAI
 ```
 
