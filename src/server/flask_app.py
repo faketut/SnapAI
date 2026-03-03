@@ -1,5 +1,6 @@
 import os
 import logging
+from typing import Optional
 from flask import Flask, render_template
 
 logger = logging.getLogger(__name__)
@@ -37,9 +38,10 @@ class FlaskApp:
         def health():
             return {'status': 'ok', 'service': 'SnapAI Mobile Client'}, 200
 
-    def run(self, debug_mode: bool = False) -> None:
+    def run(self, debug_mode: bool = False, ssl_context: Optional[str] = None) -> None:
         """Run Flask server"""
-        logger.info(f"HTTP server running on http://{self.host}:{self.port}")
+        protocol = "https" if ssl_context else "http"
+        logger.info(f"HTTP server running on {protocol}://{self.host}:{self.port}")
         
         try:
             self.app.run(
@@ -47,7 +49,8 @@ class FlaskApp:
                 port=self.port, 
                 debug=debug_mode, 
                 threaded=True,
-                use_reloader=False # Reloader doesn't play well with Threading
+                use_reloader=False, # Reloader doesn't play well with Threading
+                ssl_context=ssl_context
             )
         except Exception as e:
             logger.error(f"Flask server error: {e}")

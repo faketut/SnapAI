@@ -11,10 +11,12 @@ class MainServer:
     
     def __init__(self, host: str = '0.0.0.0', 
                  ws_port: int = 8765,
-                 http_port: int = 8080):
+                 http_port: int = 8080,
+                 use_https: bool = False):
         self.host = host
         self.ws_port = ws_port
         self.http_port = http_port
+        self.use_https = use_https
         
         # Initialize servers
         self.ws_server = WebSocketServer(host, ws_port)
@@ -28,7 +30,8 @@ class MainServer:
         
         # Start Flask server (blocking)
         logger.info("Starting Flask server...")
-        self.flask_app.run()
+        ssl_context = 'adhoc' if self.use_https else None
+        self.flask_app.run(ssl_context=ssl_context)
     
     def stop(self) -> None:
         """Stop the server"""

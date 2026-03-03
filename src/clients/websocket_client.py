@@ -5,7 +5,7 @@ from typing import Optional
 
 import websockets
 
-from PyQt5.QtCore import QObject
+from PyQt5.QtCore import QObject, pyqtSignal
 
 
 class WebSocketClient(QObject):

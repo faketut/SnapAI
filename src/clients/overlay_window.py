@@ -220,14 +220,18 @@ class OverlayWindow(QMainWindow):
         show_key = self.hotkey_manager.get_hotkey("show_overlay")
         hide_key = self.hotkey_manager.get_hotkey("hide_overlay")
 
-        if capture_key:
-            keyboard.add_hotkey(capture_key, self.capture_and_send_screenshot)
-        if clipboard_key:
-            keyboard.add_hotkey(clipboard_key, self.send_clipboard_to_server)
-        if show_key:
-            keyboard.add_hotkey(show_key, self.show)
-        if hide_key:
-            keyboard.add_hotkey(hide_key, self.hide)
+        try:
+            if capture_key:
+                keyboard.add_hotkey(capture_key, self.capture_and_send_screenshot)
+            if clipboard_key:
+                keyboard.add_hotkey(clipboard_key, self.send_clipboard_to_server)
+            if show_key:
+                keyboard.add_hotkey(show_key, self.show)
+            if hide_key:
+                keyboard.add_hotkey(hide_key, self.hide)
+        except Exception as e:
+            print(f"Warning: Failed to register global hotkeys: {e}")
+            print("SnapAI will run but global hotkeys will be unavailable.")
 
     def send_clipboard_to_server(self) -> None:
         """Read clipboard text or image and send to server"""

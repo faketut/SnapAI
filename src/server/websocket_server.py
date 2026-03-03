@@ -29,9 +29,7 @@ class WebSocketServer:
             ping_timeout=10,
             max_size=10 * 1024 * 1024,
             compression=None,
-            close_timeout=5,
-            read_limit=2**20,  # 1MB read limit
-            write_limit=2**20  # 1MB write limit
+            close_timeout=5
         ) as server:
             logger.info(f"WebSocket server running on ws://{self.host}:{self.port}")
             logger.info(f"Max clients: 50, Max message size: 10MB, Ping interval: 20s")

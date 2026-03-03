@@ -25,11 +25,12 @@ def main():
     parser = argparse.ArgumentParser(description="SnapAI Process Manager")
     parser.add_argument("--server", action="store_true", help="Start the server component")
     parser.add_argument("--client", action="store_true", help="Start the client overlay")
+    parser.add_argument("--https", action="store_true", help="Use ad-hoc SSL for the server")
     args = parser.parse_args()
 
     if args.server:
         from src.server.main_server import MainServer
-        server = MainServer()
+        server = MainServer(use_https=args.https)
         server.run()
     elif args.client:
         from src.clients.client_launcher import main as client_main
