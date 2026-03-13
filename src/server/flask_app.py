@@ -1,7 +1,7 @@
 import os
 import logging
 from typing import Optional
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,8 @@ class FlaskApp:
         @self.app.route('/')
         def index():
             try:
+                client_ip = request.remote_addr
+                logger.info(f"HTTP / from {client_ip}")
                 return render_template('mobile.html')
             except Exception as e:
                 logger.error(f"Error rendering template: {e}")
@@ -36,7 +38,16 @@ class FlaskApp:
         
         @self.app.route('/health')
         def health():
+            client_ip = request.remote_addr
+            logger.info(f"HTTP /health from {client_ip}")
             return {'status': 'ok', 'service': 'SnapAI Mobile Client'}, 200
+
+        @self.app.route('/ping')
+        def ping():
+            """Simple text/JSON ping route for connectivity testing"""
+            client_ip = request.remote_addr
+            logger.info(f"HTTP /ping from {client_ip}")
+            return jsonify({"status": "ok", "message": "pong", "client_ip": client_ip}), 200
 
     def run(self, debug_mode: bool = False, ssl_context: Optional[str] = None) -> None:
         """Run Flask server"""

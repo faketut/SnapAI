@@ -1,24 +1,43 @@
-# SnapAI
+SnapAI
+======
 
-SnapAI is a modern, locally deployed AI assistant featuring a dual-client architecture for seamless LLM interaction. It provides instant desktop overlay control via global hotkeys and real-time mobile browser synchronization, powered by Google Gemini and a robust WebSocket-based server.
+SnapAI is a desktop‑first AI assistant that lets you trigger screenshots and clipboard captures from your PC, send them to an LLM, and view the answers both in a minimal overlay window and in a mobile browser UI. It runs entirely on your machine (plus the configured AI API) and is designed to be easy to hack on and extend.
 
-## Architecture
+This repository is open source, licensed under the GNU GPLv3 (see `LICENSE`).
+
+
+Overview
+--------
+
+SnapAI consists of three main pieces:
+
+- **Desktop overlay client** (PyQt5)  
+  A floating window on your PC that shows AI responses and exposes global hotkeys to capture screenshots or process clipboard content.
+
+- **Server layer** (Flask + WebSocket)  
+  - Flask serves the mobile UI on port `8080`.  
+  - A WebSocket server on port `8765` broadcasts messages between the desktop overlay and mobile browser clients.
+
+- **Process manager**  
+  A supervisor that starts and restarts the server and overlay, and runs health checks on the HTTP endpoint.
+
+High‑level architecture:
 
 ```mermaid
 flowchart TD
     subgraph Clients
-        DOC[Desktop Overlay]
-        MBC[Mobile Browser Client]
+        DOC[DesktopOverlay]
+        MBC[MobileBrowserClient]
     end
 
-    subgraph Server Layer
-        WS[WebSocket Server]
-        FL[Flask Web Server]
-        PM[Process Manager]
+    subgraph ServerLayer
+        WS[WebSocketServer]
+        FL[FlaskWebServer]
+        PM[ProcessManager]
     end
 
-    subgraph External Services
-        GAI[Google Gemini AI]
+    subgraph ExternalServices
+        GAI[GeminiAPI]
     end
 
     DOC -- "Hotkeys (F7/F8)" --> WS
@@ -26,142 +45,254 @@ flowchart TD
     GAI -- Response --> WS
     WS -- Broadcast --> DOC
     WS -- Broadcast --> MBC
-    FL -- Serves UI --> MBC
+    FL -- ServesUI --> MBC
     PM -- Monitors --> WS
     PM -- Monitors --> FL
 ```
 
-The architecture consists of:
 
-1. **Desktop Client**: A minimalist PyQt5 overlay window that captures inputs and displays AI responses.
-2. **Web Server**: A Flask-based server providing the mobile interface.
-3. **WebSocket Server**: Handles real-time message broadcasting between all active clients.
-4. **Process Manager**: Ensures high availability by monitoring and auto-restarting failed components.
-5. **AI Integration**: Direct integration with Google Gemini for text and visual content analysis.
+Features
+--------
 
-## Prerequisites
+- **Desktop overlay window**
+  - Always‑on‑top, frameless PyQt5 UI.
+  - Global hotkeys for:
+    - Capture full‑screen screenshot and send to AI.
+    - Send clipboard text/image to AI.
+    - Show/hide overlay.
+  - System tray integration with quick actions.
 
-- Python 3.8+ installed
+- **Mobile sync UI**
+  - Simple mobile‑optimized page served from your PC.
+  - One‑tap “TAKE SCREENSHOT” button that triggers a capture on the desktop.
+  - Real‑time display of the latest AI answer.
 
-## Setup Instructions
+- **WebSocket‑based messaging**
+  - Broadcast AI responses to all connected clients (overlay + mobile).
+  - Screenshot requests flow from mobile → server → overlay.
 
-### Windows (PowerShell)
+- **Process supervision**
+  - Process manager that starts both server and overlay.
+  - Health checks against `/health` on port `8080`.
+  - Auto‑restart behaviour on crashes (server or overlay).
 
-1.  **Clone the Repository**:
-    ```powershell
-    git clone https://github.com/faketut/snapai.git
-    cd SnapAI
-    ```
-2.  **Run Setup Script**:
-    ```powershell
-    ./setup_venv.bat
-    ```
-3.  **Activate & Run**:
-    ```powershell
-    .venv\Scripts\activate
-    python main.py
-    ```
 
-### Linux / macOS (Bash)
-
-1.  **Clone the Repository**:
-    ```bash
-    git clone https://github.com/faketut/snapai.git
-    cd SnapAI
-    ```
-2.  **Install System Dependencies (Linux only)**:
-    If running on Linux, ensure you have the required X11/XCB libraries:
-    ```bash
-    sudo apt update && sudo apt install -y libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon-x11-0
-    ```
-3.  **Run Setup Script**:
-    ```bash
-    chmod +x setup_venv.sh
-    ./setup_venv.sh
-    ```
-4.  **Activate & Run**:
-    ```bash
-    source .venv/bin/activate
-    python3 main.py
-    ```
-
-### Desktop Overlay Features
-
--   **System Tray Integration**: SnapAI runs in the background. Right-click the tray icon for quick controls.
--   **Configurable Hotkeys**: Update your shortcuts in `src/config/hotkeys.json` or via the "Configure Hotkeys" dialog in the tray menu.
--   **Local AI Analysis**: Uses Google Gemini to analyze your screen or clipboard and provide coded solutions instantly.
--   **Mobile Remote Trigger**: Use the mobile UI to trigger screenshots on your PC and receive the results instantly on your phone.
-
-### Mobile Synchronization
-1. Open your mobile browser and navigate to `http://<YOUR_PC_IP>:8080/`.
-2. Use the **TAKE SCREENSHOT** button to remotely trigger a capture on your PC.
-3. The AI response will appear automatically on your mobile device.
-
-To create a standalone executable:
-1. Follow the instructions in [WINDOWS_PACKAGING.md](file:///root/code/SnapAI/WINDOWS_PACKAGING.md).
-2. Run `pyinstaller --clean snapai.spec` on a Windows host.
-
-## Project Structure
+Project layout
+--------------
 
 ```text
 ├── src/
 │   ├── config/                  # Configuration files
 │   │   └── hotkeys.json         # Hotkey mappings
-│   ├── core/                    # Core business logic
-│   │   ├── ai_service.py        # Gemini AI integration
-│   │   ├── websocket_handler.py # Message routing
+│   ├── core/                    # Core logic
+│   │   ├── ai_service.py        # Gemini integration
+│   │   ├── websocket_handler.py # WebSocket message routing
 │   │   └── hotkey_manager.py    # Hotkey configuration manager
 │   ├── clients/                 # Client implementations
 │   │   ├── overlay_window.py    # Desktop overlay (PyQt5)
-│   │   └── websocket_client.py  # WebSocket client for overlay
+│   │   └── websocket_client.py  # WebSocket client used by overlay
 │   ├── server/                  # Server components
-│   │   ├── flask_app.py         # Flask web server
+│   │   ├── flask_app.py         # Flask HTTP server
 │   │   ├── websocket_server.py  # WebSocket server
-│   │   ├── main_server.py       # Dual-server orchestrator
+│   │   ├── main_server.py       # Combined Flask + WebSocket runner
 │   │   ├── static/              # Web assets
-│   │   └── templates/           # Web templates
-│   └── process_manager/         # Life-cycle management
-├── tests/                       # Test and debug scripts
-│   ├── debug_websocket.py
-│   └── ...
-├── main.py                      # System entrance
-├── requirements.txt             # Project dependencies
-├── snapai.spec                  # PyInstaller configuration
-├── setup_venv.sh                # Linux/macOS setup script
-└── setup_venv.bat               # Windows setup script
+│   │   └── templates/           # Jinja templates (mobile UI)
+│   └── process_manager/         # Life‑cycle management
+├── main.py                      # CLI entry point (process manager / server / client)
+├── requirements.txt             # Python dependencies
+├── setup_venv.bat               # Windows venv setup helper
+├── setup_venv.sh                # Linux/macOS venv setup helper
+├── run_snapai.bat               # Start full app (overlay + server) from .venv
+├── run_server.bat               # Start server only from .venv
+├── LICENSE                      # GPLv3 license
+└── tests/                       # Test and debug scripts
 ```
 
-## Core Components Addressed
 
-1. **Dual-Client Architecture**: Seamless sync between desktop and mobile.
-2. **Real-time Communication**: Low-latency updates via WebSockets.
-3. **Advanced AI Analysis**: Leverages Gemini's multimodal capabilities.
-4. **Reliability**: Integrated process manager with heartbeat monitoring.
-5. **Modern UI**: Minimalist black-grey-white design across all platforms.
+Requirements
+------------
 
-## Future Extensions
+- Windows, macOS, or Linux
+- Python 3.8+ installed (system Python or via the Windows `py` launcher)
+- An API key for Google Gemini (or compatible generative API) configured in `.env`
 
-- Support for local LLM integration (Ollama/LM Studio).
-- Advanced hotkey customization.
-- Multiple mobile client support with room-based isolation.
-- Enhanced voice-to-text input for mobile clients.
+> **Note**: On Windows, avoid running SnapAI from a Conda environment. Use the project‑local virtual environment described below so libraries like `websockets` and PyQt5 are isolated from Conda.
 
-## Troubleshooting
 
-- **Connection Issues**: Ensure port 8080 (Flask) and 8765 (WebSocket) are open on your local firewall.
-- **Authentication**: Verify that your API key is correctly set in the `.env` file and that you have remaining quota.
-- **Process Failures**: Check the logs generated by `main.py` for specific component errors.
-- **Mobile Sync Delay**: Ensure both devices are on the same local area network (LAN).
-- **Safari "HTTPS Only" Error**: Safari on iOS may block local HTTP connections.
-  1. Ensure you type `http://` explicitly in the address bar.
-  2. If it still fails, go to **Settings > Safari > Advanced** and ensure "HTTPS Only Mode" is disabled for local testing.
-  3. Alternatively, use a browser like Chrome or Edge which allows clicking "Advanced -> Proceed" for local sites.
-- **Linux Setup Error**: If `setup_venv.sh` fails with an "ensurepip" error (common on Debian/Ubuntu), run:
+Getting started (Windows)
+-------------------------
+
+1. **Clone the repository**
+
+   ```powershell
+   git clone https://github.com/faketut/snapai.git
+   cd snapai
+   ```
+
+2. **Create a project‑local virtual environment**
+
+   ```powershell
+   .\setup_venv.bat
+   ```
+
+   This will:
+   - Create `.venv` with `py -3 -m venv` when available, otherwise `python -m venv`.
+   - Install all dependencies from `requirements.txt` into `.venv`.
+
+3. **Configure your API key**
+
+   Create a `.env` file in the repository root (you can copy from `.env.sample` if present) and set the required variables, for example:
+
+   ```text
+   GEMINI_API_KEY=your_api_key_here
+   ```
+
+4. **Run the full app (overlay + server)**
+
+   ```powershell
+   .\run_snapai.bat
+   ```
+
+   This uses `.venv\Scripts\python.exe` to run `main.py`, which:
+   - Starts the WebSocket + Flask server.
+   - Starts the overlay client (unless one is already running).
+
+5. **Optional: server‑only mode**
+
+   If you only want to run the HTTP + WebSocket server (for mobile debugging or headless use), you can use:
+
+   ```powershell
+   .\run_server.bat
+   ```
+
+
+Getting started (Linux / macOS)
+-------------------------------
+
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/faketut/snapai.git
+   cd snapai
+   ```
+
+2. **Install system packages (Linux only)**
+
+   On Debian/Ubuntu and derivatives, you’ll typically need:
+
+   ```bash
+   sudo apt update && sudo apt install -y \
+     python3-venv \
+     libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+     libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 \
+     libxcb-xkb1 libxkbcommon-x11-0
+   ```
+
+3. **Create the virtual environment**
+
+   ```bash
+   chmod +x setup_venv.sh
+   ./setup_venv.sh
+   ```
+
+4. **Configure your API key in `.env`**
+
+5. **Activate and run**
+
+   ```bash
+   source .venv/bin/activate
+   python3 main.py
+   ```
+
+   By default, `main.py` runs the process manager, which starts both server and overlay.
+
+
+Mobile access
+-------------
+
+Once the app is running (via `run_snapai.bat` or `python main.py` from the `.venv`):
+
+1. **Ensure PC and phone are on the same LAN**
+   - Use the same non‑guest Wi‑Fi SSID.
+   - Turn **off** VPN and, on Android, disable Private DNS (or set to automatic).
+
+2. **Find your PC’s IP address**
+
+   On Windows PowerShell:
+
+   ```powershell
+   ipconfig
+   ```
+
+   Look for the active adapter (e.g. `Wireless LAN adapter WLAN 2`) and note the `IPv4 Address` such as `192.168.2.17`.
+
+3. **Test connectivity from the PC**
+
+   With SnapAI running, from the PC:
+
+   ```powershell
+   Invoke-WebRequest -UseBasicParsing http://192.168.2.17:8080/health
+   ```
+
+   You should get a 200 response and JSON body.
+
+4. **Test connectivity from the phone**
+
+   In your mobile browser, open (replace with your IP):
+
+   - `http://192.168.2.17:8080/health`
+   - `http://192.168.2.17:8080/ping`
+
+   If you see responses there, the network path is working and the server logs will show the client IP.
+
+5. **Use the mobile UI**
+
+   Then open:
+
+   - `http://192.168.2.17:8080/`
+
+   You’ll see the SnapAI mobile page with:
+
+   - A scrollable answer window showing the latest AI response, styled similarly to the desktop overlay.
+   - A bottom action bar with two buttons:
+     - **screenshot** – requests a new screenshot from your PC.
+     - **sync** – fetches and displays the last AI answer again.
+
+
+Development
+-----------
+
+- **Running tests**: check the `tests/` directory for example scripts and pytest tests. A typical pattern:
+
   ```bash
-  sudo apt update && sudo apt install python3-venv
+  source .venv/bin/activate   # or .venv\Scripts\activate on Windows
+  pytest
   ```
 
-## License
+- **Debugging WebSockets**: there is a `tests/debug_websocket.py` helper to simulate clients and inspect WebSocket behaviour without the UI.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
- 
+- **Where to look for logic**:
+  - AI behaviour: `src/core/ai_service.py`
+  - WebSocket message routing: `src/core/websocket_handler.py`
+  - Overlay UI: `src/clients/overlay_window.py`
+  - Mobile template: `src/server/templates/mobile.html`
+
+
+Contributing
+------------
+
+Contributions are welcome. If you’d like to add features or fix bugs:
+
+1. Fork the repository and create a feature branch.
+2. Use the project `.venv` for all development (do not depend on Conda‑specific packages).
+3. Add or update tests under `tests/` where appropriate.
+4. Make sure the app still starts cleanly and that mobile access works as described above.
+5. Open a pull request with a clear description of your changes and their motivation.
+
+For larger changes, consider opening an issue first to discuss design ideas.
+
+
+License
+-------
+
+SnapAI is free software, released under the terms of the **GNU General Public License v3.0 (GPLv3)**. See the [`LICENSE`](LICENSE) file for the full text.

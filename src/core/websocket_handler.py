@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import threading
 from datetime import datetime
 from typing import Set, Dict, Any
 
@@ -18,29 +17,45 @@ class WebSocketHandler:
     def __init__(self):
         self.clients: Set[websockets.WebSocketServerProtocol] = set()
         self.ai_service = AIService()
-        self._lock = threading.Lock()  # Thread safety for client management
+        # All websocket handlers run on the websocket server's event loop thread,
+        # so an asyncio.Lock is the safest way to prevent concurrent mutation.
+        self._clients_lock = asyncio.Lock()
         self.last_ai_response = None  # Store last AI response for sync
         
     async def handle_client(self, websocket: websockets.WebSocketServerProtocol) -> None:
         """Handle individual WebSocket client with improved error handling"""
-        with self._lock:
+        # Never await while holding a cross-coroutine lock.
+        should_reject = False
+        async with self._clients_lock:
             if len(self.clients) >= 50:  # MAX_CLIENTS
-                logger.warning("Max clients (50) reached, rejecting connection")
+                should_reject = True
+            else:
+                self.clients.add(websocket)
+        if should_reject:
+            logger.warning("Max clients (50) reached, rejecting connection")
+            try:
                 await websocket.close(code=1013, reason="Server overloaded")
-                return
-            self.clients.add(websocket)
+            except Exception:
+                pass
+            return
         
         client_id = id(websocket)
-        client_ip = websocket.remote_address[0] if websocket.remote_address else "unknown"
+        try:
+            client_ip = websocket.remote_address[0] if websocket.remote_address else "unknown"
+        except Exception:
+            client_ip = "unknown"
         logger.info(f"Client {client_id} connected from {client_ip} (total: {len(self.clients)})")
         
         try:
             # Send welcome message
-            await websocket.send(json.dumps({
-                'type': 'welcome',
-                'message': 'Connected to SnapAI server',
-                'timestamp': datetime.now().isoformat()
-            }))
+            try:
+                await websocket.send(json.dumps({
+                    'type': 'welcome',
+                    'message': 'Connected to SnapAI server',
+                    'timestamp': datetime.now().isoformat()
+                }))
+            except websockets.ConnectionClosed:
+                return
             
             async for message in websocket:
                 try:
@@ -54,7 +69,7 @@ class WebSocketHandler:
         except Exception as e:
             logger.error(f"Error handling client {client_id}: {e}")
         finally:
-            with self._lock:
+            async with self._clients_lock:
                 self.clients.discard(websocket)
             logger.info(f"Client {client_id} removed (total: {len(self.clients)})")
     
@@ -78,6 +93,8 @@ class WebSocketHandler:
                     'type': 'pong',
                     'timestamp': datetime.now().isoformat()
                 }))
+            else:
+                await self._send_error(websocket, f"Unknown command: {command}")
                 
         except json.JSONDecodeError:
             await self._send_error(websocket, "Invalid JSON format")
@@ -164,7 +181,7 @@ class WebSocketHandler:
     async def _broadcast_to_others(self, sender: websockets.WebSocketServerProtocol, 
                                   message: dict) -> None:
         """Broadcast message to all clients except sender"""
-        with self._lock:
+        async with self._clients_lock:
             if not self.clients:
                 return
             clients_to_broadcast = [c for c in self.clients if c != sender]
@@ -197,15 +214,20 @@ class WebSocketHandler:
         
         # Remove disconnected clients
         if disconnected:
-            with self._lock:
+            async with self._clients_lock:
                 self.clients -= disconnected
 
     @staticmethod
     async def _send_error(websocket: websockets.WebSocketServerProtocol, 
                          message: str) -> None:
         """Send error message to client"""
-        await websocket.send(json.dumps({
-            'type': 'error',
-            'message': message,
-            'timestamp': datetime.now().isoformat()
-        }))
+        try:
+            await websocket.send(json.dumps({
+                'type': 'error',
+                'message': message,
+                'timestamp': datetime.now().isoformat()
+            }))
+        except websockets.ConnectionClosed:
+            return
+        except Exception:
+            return
